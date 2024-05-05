@@ -26,12 +26,13 @@ enum class InstructionOp {
   BNEZ,  // bnez
 };
 
-enum class PipeLine {
+enum class PipelineStage {
   IF = 0,
   ID = 1,
   EX = 2,
   MEM = 3,
   WB = 4,
+  NONE = 5,
 };
 
 const std::vector<std::string> pipeline_name = {"IF", "ID", "EX", "MEM", "WB"};
@@ -42,8 +43,12 @@ public:
   size_t rd_;
   size_t rs_or_label_;
   int rt_or_imm_;
+  long long in1{0};
+  int in2{0};
+  int res{0};
   bool is_breakpoint_;
   bool is_finished_;
+  PipelineStage ppl_stage{PipelineStage::NONE};
   Instruction() = delete;
   inline Instruction(InstructionOp instruction_op, size_t rd, size_t rs,
                      int rt_or_imm, bool is_breakpoint = false,
@@ -102,24 +107,77 @@ public:
 
   static inline bool HasHazard(Instruction &new_inst, Instruction &old_inst) {
     switch (new_inst.instruction_op_) {
-    case InstructionOp::LOAD:
-    case InstructionOp::ADDI:
-    case InstructionOp::SUBI:
-      return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
-             new_inst.rs_or_label_ == old_inst.rd_;
-      break;
-    case InstructionOp::ADD:
-    case InstructionOp::SUB:
-      return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
-             (new_inst.rs_or_label_ == old_inst.rd_ ||
-              new_inst.rt_or_imm_ == old_inst.rd_);
-      break;
-    case InstructionOp::STORE:
-    case InstructionOp::BEQZ:
-    case InstructionOp::BNEZ:
-      return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
-             (new_inst.rd_ == old_inst.rd_ || new_inst.rd_ == old_inst.rd_);
-      break;
+      case InstructionOp::LOAD:
+      case InstructionOp::ADDI:
+      case InstructionOp::SUBI:
+        return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
+              new_inst.rs_or_label_ == old_inst.rd_;
+        break;
+      case InstructionOp::ADD:
+      case InstructionOp::SUB:
+        return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
+              (new_inst.rs_or_label_ == old_inst.rd_ ||
+                new_inst.rt_or_imm_ == old_inst.rd_);
+        break;
+      case InstructionOp::STORE:
+      case InstructionOp::BEQZ:
+      case InstructionOp::BNEZ:
+        return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
+              (new_inst.rd_ == old_inst.rd_ || new_inst.rd_ == old_inst.rd_);
+        break;
+    }
+  }
+
+  static inline bool Forwarding(Instruction &new_inst, Instruction &old_inst) {
+    switch (new_inst.instruction_op_) {
+      case InstructionOp::LOAD:
+      case InstructionOp::ADDI:
+      case InstructionOp::SUBI:
+        switch (old_inst.instruction_op_) {
+          case InstructionOp::LOAD:
+          case InstructionOp::ADDI:
+          case InstructionOp::SUBI:
+          case InstructionOp::ADD:
+          case InstructionOp::SUB:
+            if (new_inst.rs_or_label_ == old_inst.rd_ && 
+                (old_inst.instruction_op_ != InstructionOp::LOAD || old_inst.ppl_stage == PipelineStage::MEM)) {
+              new_inst.in1 = old_inst.res;
+              new_inst.in2 = new_inst.rt_or_imm_;
+              return true;
+            }
+            return false;
+            break;
+          default:
+            break;
+        }
+        break;
+      case InstructionOp::ADD:
+      case InstructionOp::SUB:
+        switch (old_inst.instruction_op_) {
+          case InstructionOp::LOAD:
+          case InstructionOp::ADDI:
+          case InstructionOp::SUBI:
+          case InstructionOp::ADD:
+          case InstructionOp::SUB:
+            if (new_inst.rs_or_label_ == old_inst.rd_ && 
+                (old_inst.instruction_op_ != InstructionOp::LOAD || old_inst.ppl_stage == PipelineStage::MEM)) {
+              new_inst.in1 = old_inst.res;
+            }
+            if (new_inst.rt_or_imm_ == old_inst.rd_ && 
+                (old_inst.instruction_op_ != InstructionOp::LOAD || old_inst.ppl_stage == PipelineStage::MEM)) {
+              new_inst.in2 = old_inst.res;
+            }
+            break;
+          default:
+            break;
+        }
+        break;
+      case InstructionOp::STORE:
+      case InstructionOp::BEQZ:
+      case InstructionOp::BNEZ:
+        return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
+              (new_inst.rd_ == old_inst.rd_ || new_inst.rd_ == old_inst.rd_);
+        break;
     }
   }
 
