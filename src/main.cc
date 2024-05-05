@@ -1,19 +1,9 @@
 #include "simulator.h"
-#include <cctype>
-#include <cstddef>
-#include <cstring>
-#include <fstream>
-#include <iostream>
-#include <ostream>
-#include <string>
-#include <unordered_map>
-#include <vector>
-#include <limits>
 
 int main(int argc, char **argv) {
   if (argc < 2) {
-    std::cerr << "You did not provide MIPS file.\nYou should directly input "
-                 "your MIPS code:\n";
+    std::cerr << "You did not provide MIPS file.\n";
+    exit(-1);
   }
   std::ifstream fin(argv[1]);
   std::unordered_map<std::string, size_t> symbol_to_memory;
@@ -178,6 +168,5 @@ int main(int argc, char **argv) {
         Simulator::PrintUsage();
     }
   }
-  
   return 0;
 }

@@ -1,6 +1,4 @@
 #include "simulator.h"
-#include <cstddef>
-#include <iostream>
 
 Simulator::Simulator() : memory_(16, 0), register_(32, 0), pipeline_(5, -1) {}
 
@@ -71,14 +69,85 @@ void Simulator::SetBreakpoint(size_t instruction_index) {
 bool Simulator::IsFinished() const {
   return instructions_.size() == 0 or pc_ >= instructions_.size() + 5;
 }
-
+bool Simulator::TryForwarding(Instruction& new_inst, Instruction& old_inst, bool enable_forwarding) {
+  switch (new_inst.instruction_op_) {
+    case InstructionOp::LOAD:
+    case InstructionOp::ADDI:
+    case InstructionOp::SUBI:
+      if (!IsBrachInst(old_inst) && !IsStoreInst(old_inst) && new_inst.rs_or_label_ == old_inst.rd_) {
+        if (!enable_forwarding || (old_inst.instruction_op_ == InstructionOp::LOAD && old_inst.ppl_stage != PipelineStage::MEM)) {
+          return false;
+        }
+        new_inst.in1 = old_inst.res;
+        new_inst.in2 = new_inst.rt_or_imm_;
+      } else {
+        new_inst.in1 = register_[new_inst.rs_or_label_];
+        new_inst.in2 = new_inst.rt_or_imm_;
+      }
+      break;
+    case InstructionOp::ADD:
+    case InstructionOp::SUB:
+      if (!IsBrachInst(old_inst) && !IsStoreInst(old_inst)) {
+        if (new_inst.rs_or_label_ == old_inst.rd_) {
+          if (!enable_forwarding || (old_inst.instruction_op_ == InstructionOp::LOAD && old_inst.ppl_stage != PipelineStage::MEM)) {
+            
+            new_inst.in1 = LLONG_MAX;
+            return false;
+          }
+          // can forward
+          new_inst.in1 = old_inst.res;
+        } else {
+          new_inst.in1 = register_[new_inst.rs_or_label_];
+        }
+        if (new_inst.rt_or_imm_ == old_inst.rd_) {
+          if (!enable_forwarding || (old_inst.instruction_op_ == InstructionOp::LOAD && old_inst.ppl_stage != PipelineStage::MEM)) {
+            new_inst.in1 = LLONG_MAX;
+            return false;
+          }
+          // can forward
+          new_inst.in2 = old_inst.res;
+        } else {
+          new_inst.in2 = register_[new_inst.rt_or_imm_];
+        }
+      } else {  // no hazard
+        new_inst.in1 = register_[new_inst.rs_or_label_];
+        new_inst.in2 = register_[new_inst.rt_or_imm_];
+      }
+      break;
+    case InstructionOp::STORE:
+      if (!IsBrachInst(old_inst) && !IsStoreInst(old_inst) && new_inst.rd_ == old_inst.rd_) {
+        if (!enable_forwarding || (old_inst.instruction_op_ == InstructionOp::LOAD && old_inst.ppl_stage != PipelineStage::MEM)) {
+          return false;
+        }
+        // can forward
+        new_inst.in1 = register_[new_inst.rs_or_label_];
+        new_inst.in2 = old_inst.res;
+      } else {
+        new_inst.in1 = register_[new_inst.rs_or_label_];
+        new_inst.in2 = new_inst.rd_;
+      }
+      
+    case InstructionOp::BEQZ:
+    case InstructionOp::BNEZ:
+      if (!IsBrachInst(old_inst) && !IsStoreInst(old_inst) && new_inst.rd_ == old_inst.rd_) {
+        if (!enable_forwarding || old_inst.instruction_op_ == InstructionOp::LOAD || old_inst.ppl_stage != PipelineStage::MEM) {
+          return false;
+        }
+        new_inst.in2 = old_inst.res;
+      }
+      break;
+  }
+  return true;
+}
 bool Simulator::SingleCycle() {
   if (IsFinished()) {
     std::cerr << "!!!All the instructions has been executed!!!\n";
     return true;
   }
   if (pipeline_[4] != -1) {
-    instructions_[pipeline_[4]].is_finished_ = true;
+    instructions_[pipeline_[4]].in1 = LLONG_MAX;
+    instructions_[pipeline_[4]].in2 = LLONG_MAX;
+    instructions_[pipeline_[4]].res = LLONG_MAX;
   }
   // update WB
   pipeline_[4] = pipeline_[3];
@@ -145,10 +214,16 @@ bool Simulator::SingleCycle() {
     if (pipeline_[2] != -1) { // check EX
       auto &EX_Inst = instructions_[pipeline_[2]];
       should_stall = HasHazard(old_IF_Inst, EX_Inst);
+      if (should_stall && enable_forwarding_) {
+        should_stall = !TryForwarding(old_IF_Inst, EX_Inst);
+      }
     }
     if (!should_stall && pipeline_[3] != -1) { // check MEM
       auto &MEM_Inst = instructions_[pipeline_[3]];
       should_stall = HasHazard(old_IF_Inst, MEM_Inst);
+      if (should_stall && enable_forwarding_) {
+        should_stall = !TryForwarding(old_IF_Inst, MEM_Inst);
+      }
     }
   }
   bool reached_bp = false;
@@ -173,28 +248,47 @@ bool Simulator::SingleCycle() {
       switch (ID_Inst.instruction_op_) {
         case InstructionOp::LOAD:
         case InstructionOp::STORE:
-          ID_Inst.in1 = register_[ID_Inst.rs_or_label_];
-          ID_Inst.in2 = register_[ID_Inst.rd_];
+          if (ID_Inst.in1 == LLONG_MAX) {
+            ID_Inst.in1 = register_[ID_Inst.rs_or_label_];
+          }
+          if (ID_Inst.in2 == LLONG_MAX) {
+            ID_Inst.in2 = register_[ID_Inst.rd_];
+          }
           break;
         case InstructionOp::ADD:
         case InstructionOp::SUB:
-          ID_Inst.in1 = register_[ID_Inst.rs_or_label_];
-          ID_Inst.in2 = register_[ID_Inst.rt_or_imm_];
+          if (ID_Inst.in1 == LLONG_MAX) {
+            ID_Inst.in1 = register_[ID_Inst.rs_or_label_];
+          }
+          if (ID_Inst.in2 == LLONG_MAX) {
+            ID_Inst.in2 = register_[ID_Inst.rt_or_imm_];
+          }
+          
           break;
         case InstructionOp::ADDI:
         case InstructionOp::SUBI:
-          ID_Inst.in1 = register_[ID_Inst.rs_or_label_];
-          ID_Inst.in2 = ID_Inst.rt_or_imm_;
+          if (ID_Inst.in1 == LLONG_MAX) {
+            ID_Inst.in1 = register_[ID_Inst.rs_or_label_];
+          }
+          if (ID_Inst.in2 == LLONG_MAX) {
+            ID_Inst.in2 = ID_Inst.rt_or_imm_;
+          }
           break;
         case InstructionOp::BEQZ:
-          if (register_[ID_Inst.rd_] == 0) {
+          if (ID_Inst.in2 == LLONG_MAX) {
+            ID_Inst.in2 = register_[ID_Inst.rd_];
+          }
+          if (ID_Inst.in2 == 0) {
             pipeline_[0] = -1;
             pc_ = ID_Inst.rs_or_label_;
             ++control_stalls_;
           }
           break;
-          case InstructionOp::BNEZ:
-          if (register_[ID_Inst.rd_] != 0) {
+        case InstructionOp::BNEZ:
+          if (ID_Inst.in2 == LLONG_MAX) {
+            ID_Inst.in2 = register_[ID_Inst.rd_];
+          }
+          if (ID_Inst.in2 != 0) {
             pipeline_[0] = -1;
             pc_ = ID_Inst.rs_or_label_;
             ++control_stalls_;
@@ -206,12 +300,8 @@ bool Simulator::SingleCycle() {
       ID_Inst.ppl_stage = PipelineStage::ID;
     }
   } else {
-    if (enable_forwarding_) {
-      
-    } else {
-      ++raw_stalls_;
-      pipeline_[1] = -1;
-    }    
+    ++raw_stalls_;
+    pipeline_[1] = -1;
   }
   ++cycle_clocks_;
   if (IsFinished()) {
@@ -226,6 +316,8 @@ void Simulator::RunToStop() {
     return;
   }
   while (!IsFinished()) {
+    PrintPipelines();
+    std::cout << '\n';
     if (SingleCycle()) {
       break;
     }
