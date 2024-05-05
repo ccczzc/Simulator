@@ -4,10 +4,11 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <ostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
+#include <limits>
 
 int main(int argc, char **argv) {
   if (argc < 2) {
@@ -85,7 +86,7 @@ int main(int argc, char **argv) {
         instructions.emplace_back(opname == "add" ? InstructionOp::ADD
                                                   : InstructionOp::SUB,
                                   rd, rs, rt);
-      } else if (opname == "beqz" or opname == "bnez") {
+      } else if (opname == "beqz" || opname == "bnez") {
         size_t rd = std::stoi(optor1.substr(1));
         size_t label_inst_idx = -1;
         auto it = label_to_inst_idx.find(optor2);
@@ -94,9 +95,6 @@ int main(int argc, char **argv) {
         } else {
           unresolved_label[optor2].push_back(inst_num);
         }
-        
-        // BUG TODO:
-        // the label may not appear yet
         instructions.emplace_back(opname == "beqz" ? InstructionOp::BEQZ
                                                   : InstructionOp::BNEZ,
                                   rd, label_inst_idx, -1);
@@ -119,7 +117,7 @@ int main(int argc, char **argv) {
   std::cout << "Enable forwarding:(y/n): ";
   char inch;
   std::cin >> inch;
-  enable_forward = (inch == 'y' or inch == 'Y');
+  enable_forward = (inch == 'y' || inch == 'Y');
   Simulator mysim(init_memory, instructions, instruction_text, enable_forward);
   mysim.PrintInstructions();
   Simulator::PrintUsage();
@@ -160,6 +158,8 @@ int main(int argc, char **argv) {
         if (std::cin >> bp_inst_idx) {
           mysim.SetBreakpoint(bp_inst_idx);
         } else {
+          std::cin.clear();
+          std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
           Simulator::PrintUsage();
         }
         break;

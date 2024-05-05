@@ -37,7 +37,7 @@ enum class PipeLine {
 const std::vector<std::string> pipeline_name = {"IF", "ID", "EX", "MEM", "WB"};
 
 class Instruction {
- public:
+public:
   InstructionOp instruction_op_;
   size_t rd_;
   size_t rs_or_label_;
@@ -55,7 +55,7 @@ class Instruction {
 };
 
 class Simulator {
- private:
+private:
   std::vector<long> memory_;
   std::vector<Register> register_;
   std::vector<Instruction> instructions_;
@@ -64,10 +64,11 @@ class Simulator {
   std::vector<size_t> pipeline_;
   size_t pc_{0};
   size_t cycle_clocks_{0};
-  size_t stalls_{0};
+  size_t raw_stalls_{0};
+  size_t control_stalls_{0};
   bool enable_forwarding_{false};
 
- public:
+public:
   Simulator();
   Simulator(std::vector<long> init_memory,
             std::vector<Instruction> instructions,
@@ -87,15 +88,46 @@ class Simulator {
   bool SingleCycle();
   void RunToStop();
 
-  
-  static void PrintUsage() {
-    std::cout
-      << "Usage: \n"
-      << "v [i | p | r | b | m | s]: "
-         "display instructions | pipelines | registers | breakpoints | memory | statistics\n"
-      << "b [instruction index] : set breakpoint at instruction of the index\n"
-      << "s : single cycles\n"
-      << "r : run to the end or breakpoint\n"
-      << "q : quit the simulator\n";
+  static inline void PrintUsage() {
+    std::cout << "Usage: \n"
+              << "v [i | p | r | b | m | s]: "
+                 "display instructions | pipelines | registers | breakpoints | "
+                 "memory | statistics\n"
+              << "b [instruction index] : set breakpoint at instruction of the "
+                 "index\n"
+              << "s : single cycles\n"
+              << "r : run to the end or breakpoint\n"
+              << "q : quit the simulator\n";
+  }
+
+  static inline bool HasHazard(Instruction &new_inst, Instruction &old_inst) {
+    switch (new_inst.instruction_op_) {
+    case InstructionOp::LOAD:
+    case InstructionOp::ADDI:
+    case InstructionOp::SUBI:
+      return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
+             new_inst.rs_or_label_ == old_inst.rd_;
+      break;
+    case InstructionOp::ADD:
+    case InstructionOp::SUB:
+      return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
+             (new_inst.rs_or_label_ == old_inst.rd_ ||
+              new_inst.rt_or_imm_ == old_inst.rd_);
+      break;
+    case InstructionOp::STORE:
+    case InstructionOp::BEQZ:
+    case InstructionOp::BNEZ:
+      return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
+             (new_inst.rd_ == old_inst.rd_ || new_inst.rd_ == old_inst.rd_);
+      break;
+    }
+  }
+
+  static inline bool IsBrachInst(Instruction &inst) {
+    return inst.instruction_op_ == InstructionOp::BEQZ or
+           inst.instruction_op_ == InstructionOp::BNEZ;
+  }
+  static inline bool IsStoreInst(Instruction &inst) {
+    return inst.instruction_op_ == InstructionOp::STORE;
   }
 };

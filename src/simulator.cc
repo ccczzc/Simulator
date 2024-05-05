@@ -38,7 +38,12 @@ void Simulator::PrintRegisters() const {
     }
   }
 }
-void Simulator::PrintBreakpoints() const {}
+void Simulator::PrintBreakpoints() const {
+  for (size_t i = 0; i < instruction_text_.size(); ++i) {
+    std::cout << i << '\t' << (instructions_[i].is_breakpoint_ ? "BID\t" : "\t")
+              << instruction_text_[i] << '\n';
+  }
+}
 void Simulator::PrintMemory() const {
   std::cout
       << "Address\tValue\tAddress\tValue\tAddress\tValue\tAddress\tValue\t\n";
@@ -51,16 +56,17 @@ void Simulator::PrintMemory() const {
 }
 void Simulator::PrintStatistics() const {
   std::cout << "Total:\n\t" << cycle_clocks_ << " cycle clocks executed\n";
-  std::cout << "Stalls:\n\t" << stalls_ << " stalls\n";
-
+  std::cout << "Stalls:\n"
+            << "\tRAW stalls: " << raw_stalls_ << "\n"
+            << "\tControl stalls: " << control_stalls_ << "\n"
+            << "\tTotal: " << raw_stalls_ + control_stalls_ << "\n";
 }
 
 void Simulator::SetBreakpoint(size_t instruction_index) {
   instructions_[instruction_index].is_breakpoint_ = true;
-  std::cout << "Set Breakpoint at:\t" << instruction_index << '\t' 
+  std::cout << "Set Breakpoint at:\t" << instruction_index << '\t'
             << instruction_text_[instruction_index] << '\n';
 }
-
 
 bool Simulator::IsFinished() const {
   return instructions_.size() == 0 or pc_ >= instructions_.size() + 5;
@@ -70,7 +76,7 @@ bool Simulator::SingleCycle() {
   if (IsFinished()) {
     std::cerr << "!!!All the instructions has been executed!!!\n";
     return true;
-  } 
+  }
   if (pipeline_[4] != -1) {
     instructions_[pipeline_[4]].is_finished_ = true;
   }
@@ -103,10 +109,6 @@ bool Simulator::SingleCycle() {
       register_[WB_Inst.rd_] =
           register_[WB_Inst.rs_or_label_] - register_[WB_Inst.rt_or_imm_];
       break;
-    case InstructionOp::BEQZ:
-      break;
-    case InstructionOp::BNEZ:
-      break;
     default:
       break;
     }
@@ -119,40 +121,47 @@ bool Simulator::SingleCycle() {
     auto &old_IF_Inst = instructions_[old_IF];
     if (pipeline_[2] != -1) { // check EX
       auto &EX_Inst = instructions_[pipeline_[2]];
-      if (EX_Inst.rd_ == old_IF_Inst.rs_or_label_ or
-          EX_Inst.rd_ == old_IF_Inst.rt_or_imm_) {
-        should_stall = true;
-      }
+      should_stall = HasHazard(old_IF_Inst, EX_Inst);
     }
-    if (!should_stall and pipeline_[3] != -1) { // check MEM
+    if (!should_stall && pipeline_[3] != -1) { // check MEM
       auto &MEM_Inst = instructions_[pipeline_[3]];
-      if (MEM_Inst.rd_ == old_IF_Inst.rs_or_label_ or
-          MEM_Inst.rd_ == old_IF_Inst.rt_or_imm_) {
-        should_stall = true;
-      }
+      should_stall = HasHazard(old_IF_Inst, MEM_Inst);
     }
   }
   bool reached_bp = false;
   if (!should_stall) {
-    pipeline_[1] = old_IF;
-    if (pipeline_[1] != 1 && instructions_[pipeline_[1]].is_breakpoint_) {
-      reached_bp = true;
-      std::cout << "!!! ID-Stage: Reached at breakpoint [" << pipeline_[1] << '\t' 
-            << instruction_text_[pipeline_[1]] << "] !!!\n";
-    }
     if (pc_ >= instructions_.size()) {
       pipeline_[0] = -1;
     } else {
       pipeline_[0] = pc_;
     }
     ++pc_;
+    pipeline_[1] = old_IF;
+    size_t curr_ID = pipeline_[1];
+    if (curr_ID != -1) {
+      auto &ID_inst = instructions_[curr_ID];
+      if (ID_inst.is_breakpoint_) {
+        reached_bp = true;
+        std::cout << "!!! ID-Stage: Reached at breakpoint [" << curr_ID << '\t'
+                  << instruction_text_[curr_ID] << "] !!!\n";
+      }
+      if ((ID_inst.instruction_op_ == InstructionOp::BEQZ &&
+           register_[ID_inst.rd_] == 0) or
+          (instructions_[curr_ID].instruction_op_ == InstructionOp::BNEZ &&
+           register_[ID_inst.rd_] != 0)) {
+        pipeline_[0] = -1;
+        pc_ = ID_inst.rs_or_label_;
+        ++control_stalls_;
+      }
+    }
   } else {
-    ++stalls_;
+    ++raw_stalls_;
     pipeline_[1] = -1;
   }
   ++cycle_clocks_;
   if (IsFinished()) {
-    std::cout << "Instructions execution finished! " << cycle_clocks_ << " cycle clocks executed!\n";
+    std::cout << "Instructions execution finished! " << cycle_clocks_
+              << " cycle clocks executed!\n";
   }
   return reached_bp;
 }
