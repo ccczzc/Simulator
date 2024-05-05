@@ -50,6 +50,8 @@ void Simulator::PrintMemory() const {
   }
 }
 void Simulator::PrintStatistics() const {
+  std::cout << "Total:\n\t" << cycle_clocks_ << " cycle clocks executed\n";
+  std::cout << "Stalls:\n\t" << stalls_ << " stalls\n";
 
 }
 
@@ -64,10 +66,10 @@ bool Simulator::IsFinished() const {
   return instructions_.size() == 0 or pc_ >= instructions_.size() + 5;
 }
 
-void Simulator::SingleCycle() {
+bool Simulator::SingleCycle() {
   if (IsFinished()) {
     std::cerr << "!!!All the instructions has been executed!!!\n";
-    return;
+    return true;
   } 
   if (pipeline_[4] != -1) {
     instructions_[pipeline_[4]].is_finished_ = true;
@@ -130,8 +132,14 @@ void Simulator::SingleCycle() {
       }
     }
   }
+  bool reached_bp = false;
   if (!should_stall) {
     pipeline_[1] = old_IF;
+    if (pipeline_[1] != 1 && instructions_[pipeline_[1]].is_breakpoint_) {
+      reached_bp = true;
+      std::cout << "!!! ID-Stage: Reached at breakpoint [" << pipeline_[1] << '\t' 
+            << instruction_text_[pipeline_[1]] << "] !!!\n";
+    }
     if (pc_ >= instructions_.size()) {
       pipeline_[0] = -1;
     } else {
@@ -146,6 +154,7 @@ void Simulator::SingleCycle() {
   if (IsFinished()) {
     std::cout << "Instructions execution finished! " << cycle_clocks_ << " cycle clocks executed!\n";
   }
+  return reached_bp;
 }
 void Simulator::RunToStop() {
   if (IsFinished()) {
@@ -153,6 +162,8 @@ void Simulator::RunToStop() {
     return;
   }
   while (!IsFinished()) {
-    SingleCycle();
+    if (SingleCycle()) {
+      break;
+    }
   }
 }

@@ -84,7 +84,7 @@ class Simulator {
   void PrintStatistics() const;
 
   void SetBreakpoint(size_t instruction_index);
-  void SingleCycle();
+  bool SingleCycle();
   void RunToStop();
 
   
