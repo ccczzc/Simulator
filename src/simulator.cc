@@ -2,14 +2,15 @@
 #include <cstddef>
 #include <iostream>
 
-Simulator::Simulator()
-    : memory_(10, 0), register_(32, 0), pipeline_(5, -1) {}
+Simulator::Simulator() : memory_(16, 0), register_(32, 0), pipeline_(5, -1) {}
 
 Simulator::Simulator(std::vector<long> init_memory,
                      std::vector<Instruction> instructions,
-                     std::vector<std::string> instruction_text)
-    : memory_(init_memory), register_(32, 0), pipeline_(5, -1) {
-  memory_.resize(10);
+                     std::vector<std::string> instruction_text,
+                     bool enable_forwarding)
+    : memory_(init_memory), register_(32, 0), pipeline_(5, -1),
+      enable_forwarding_(enable_forwarding) {
+  memory_.resize(16);
   instructions_ = std::move(instructions);
   instruction_text_ = std::move(instruction_text);
 }
@@ -38,66 +39,120 @@ void Simulator::PrintRegisters() const {
   }
 }
 void Simulator::PrintBreakpoints() const {}
+void Simulator::PrintMemory() const {
+  std::cout
+      << "Address\tValue\tAddress\tValue\tAddress\tValue\tAddress\tValue\t\n";
+  for (size_t mem_idx = 0; mem_idx < memory_.size(); ++mem_idx) {
+    std::cout << mem_idx << '\t' << memory_[mem_idx] << '\t';
+    if ((mem_idx + 1) % 4 == 0) {
+      std::cout << '\n';
+    }
+  }
+}
+void Simulator::PrintStatistics() const {
+
+}
 
 void Simulator::SetBreakpoint(size_t instruction_index) {
   instructions_[instruction_index].is_breakpoint_ = true;
+  std::cout << "Set Breakpoint at:\t" << instruction_index << '\t' 
+            << instruction_text_[instruction_index] << '\n';
 }
 
-void Simulator::PrintUsage() {
-  std::cout
-      << "Usage: \n"
-      << "v [i | p | r | b]: print "
-         "instructions/pipelines/registers/breakpoints\n"
-      << "b [instruction index] : set breakpoint at instruction of the index\n"
-      << "s : single cycles\n"
-      << "r : run to the end or breakpoint\n"
-      << "q : quit the simulator\n";
+
+bool Simulator::IsFinished() const {
+  return instructions_.size() == 0 or pc_ >= instructions_.size() + 5;
 }
 
-bool Simulator::IsFinished() const { return false; }
-
-bool Simulator::SingleCycle() {
+void Simulator::SingleCycle() {
+  if (IsFinished()) {
+    std::cerr << "!!!All the instructions has been executed!!!\n";
+    return;
+  } 
   if (pipeline_[4] != -1) {
     instructions_[pipeline_[4]].is_finished_ = true;
   }
-  
-  pipeline_[4] = pipeline_[3];  // update WB
-  pipeline_[3] = pipeline_[2];  // update MEM
-  pipeline_[2] = pipeline_[1];  // update EX
+
+  pipeline_[4] = pipeline_[3]; // update WB
+  if (pipeline_[4] != -1) {
+    auto &WB_Inst = instructions_[pipeline_[3]];
+    switch (WB_Inst.instruction_op_) {
+    case InstructionOp::LOAD:
+      register_[WB_Inst.rd_] =
+          memory_[register_[WB_Inst.rs_or_label_] + WB_Inst.rt_or_imm_];
+      break;
+    case InstructionOp::STORE:
+      memory_[register_[WB_Inst.rs_or_label_] + WB_Inst.rt_or_imm_] =
+          register_[WB_Inst.rd_];
+      break;
+    case InstructionOp::ADDI:
+      register_[WB_Inst.rd_] =
+          register_[WB_Inst.rs_or_label_] + WB_Inst.rt_or_imm_;
+      break;
+    case InstructionOp::SUBI:
+      register_[WB_Inst.rd_] =
+          register_[WB_Inst.rs_or_label_] - WB_Inst.rt_or_imm_;
+      break;
+    case InstructionOp::ADD:
+      register_[WB_Inst.rd_] =
+          register_[WB_Inst.rs_or_label_] + register_[WB_Inst.rt_or_imm_];
+      break;
+    case InstructionOp::SUB:
+      register_[WB_Inst.rd_] =
+          register_[WB_Inst.rs_or_label_] - register_[WB_Inst.rt_or_imm_];
+      break;
+    case InstructionOp::BEQZ:
+      break;
+    case InstructionOp::BNEZ:
+      break;
+    default:
+      break;
+    }
+  }
+  pipeline_[3] = pipeline_[2]; // update MEM
+  pipeline_[2] = pipeline_[1]; // update EX
   size_t old_IF = pipeline_[0];
   bool should_stall = false;
   if (old_IF != -1) {
-    auto& old_IF_Inst = instructions_[old_IF];
-    if (pipeline_[2] != -1) {   // check EX
-      auto& EX_Inst = instructions_[pipeline_[2]];
-      if (EX_Inst.rd_ == old_IF_Inst.rs_or_label_ or EX_Inst.rd_ == old_IF_Inst.rt_or_imm_) {
+    auto &old_IF_Inst = instructions_[old_IF];
+    if (pipeline_[2] != -1) { // check EX
+      auto &EX_Inst = instructions_[pipeline_[2]];
+      if (EX_Inst.rd_ == old_IF_Inst.rs_or_label_ or
+          EX_Inst.rd_ == old_IF_Inst.rt_or_imm_) {
         should_stall = true;
       }
     }
-    if (!should_stall and pipeline_[3] != -1) {  // check MEM
-      auto& MEM_Inst = instructions_[pipeline_[3]];
-      if (MEM_Inst.rd_ == old_IF_Inst.rs_or_label_ or MEM_Inst.rd_ == old_IF_Inst.rt_or_imm_) {
+    if (!should_stall and pipeline_[3] != -1) { // check MEM
+      auto &MEM_Inst = instructions_[pipeline_[3]];
+      if (MEM_Inst.rd_ == old_IF_Inst.rs_or_label_ or
+          MEM_Inst.rd_ == old_IF_Inst.rt_or_imm_) {
         should_stall = true;
       }
     }
-    if (should_stall) {
-      pipeline_[1] = -1;
+  }
+  if (!should_stall) {
+    pipeline_[1] = old_IF;
+    if (pc_ >= instructions_.size()) {
+      pipeline_[0] = -1;
     } else {
-      pipeline_[1] = old_IF;
+      pipeline_[0] = pc_;
     }
+    ++pc_;
   } else {
+    ++stalls_;
     pipeline_[1] = -1;
   }
-  if (should_stall) {
-
-  } else if (pc_ >= instructions_.size()) {
-    pipeline_[0] = -1;
-  } else {
-    pipeline_[0] = pc_;
-    ++pc_;
+  ++cycle_clocks_;
+  if (IsFinished()) {
+    std::cout << "Instructions execution finished! " << cycle_clocks_ << " cycle clocks executed!\n";
   }
-  return true;
 }
-bool Simulator::RunToStop() {
-  return true;
+void Simulator::RunToStop() {
+  if (IsFinished()) {
+    std::cerr << "!!!All the instructions has been executed!!!\n";
+    return;
+  }
+  while (!IsFinished()) {
+    SingleCycle();
+  }
 }

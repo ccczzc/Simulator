@@ -37,7 +37,7 @@ enum class PipeLine {
 const std::vector<std::string> pipeline_name = {"IF", "ID", "EX", "MEM", "WB"};
 
 class Instruction {
-public:
+ public:
   InstructionOp instruction_op_;
   size_t rd_;
   size_t rs_or_label_;
@@ -55,7 +55,7 @@ public:
 };
 
 class Simulator {
-private:
+ private:
   std::vector<long> memory_;
   std::vector<Register> register_;
   std::vector<Instruction> instructions_;
@@ -64,21 +64,38 @@ private:
   std::vector<size_t> pipeline_;
   size_t pc_{0};
   size_t cycle_clocks_{0};
+  size_t stalls_{0};
+  bool enable_forwarding_{false};
 
-public:
+ public:
   Simulator();
   Simulator(std::vector<long> init_memory,
             std::vector<Instruction> instructions,
-            std::vector<std::string> instruction_text);
+            std::vector<std::string> instruction_text,
+            bool enable_forwarding = false);
   ~Simulator() = default;
 
-  static void PrintUsage();
+  bool IsFinished() const;
   void PrintInstructions() const;
   void PrintPipelines() const;
   void PrintRegisters() const;
   void PrintBreakpoints() const;
+  void PrintMemory() const;
+  void PrintStatistics() const;
+
   void SetBreakpoint(size_t instruction_index);
-  bool IsFinished() const;
-  bool SingleCycle();
-  bool RunToStop();
+  void SingleCycle();
+  void RunToStop();
+
+  
+  static void PrintUsage() {
+    std::cout
+      << "Usage: \n"
+      << "v [i | p | r | b | m | s]: "
+         "display instructions | pipelines | registers | breakpoints | memory | statistics\n"
+      << "b [instruction index] : set breakpoint at instruction of the index\n"
+      << "s : single cycles\n"
+      << "r : run to the end or breakpoint\n"
+      << "q : quit the simulator\n";
+  }
 };

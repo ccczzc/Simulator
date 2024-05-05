@@ -115,7 +115,12 @@ int main(int argc, char **argv) {
     }
   }
 
-  Simulator mysim(init_memory, instructions, instruction_text);
+  bool enable_forward = false;
+  std::cout << "Enable forwarding:(y/n): ";
+  char inch;
+  std::cin >> inch;
+  enable_forward = (inch == 'y' or inch == 'Y');
+  Simulator mysim(init_memory, instructions, instruction_text, enable_forward);
   mysim.PrintInstructions();
   Simulator::PrintUsage();
   bool is_terminated = false;
@@ -140,6 +145,12 @@ int main(int argc, char **argv) {
           case 'b':
             mysim.PrintBreakpoints();
             break;
+          case 'm':
+            mysim.PrintMemory();
+            break;
+          case 's':
+            mysim.PrintStatistics();
+            break;
           default:
             Simulator::PrintUsage();
         }
@@ -147,7 +158,7 @@ int main(int argc, char **argv) {
       case 'b':
         size_t bp_inst_idx;
         if (std::cin >> bp_inst_idx) {
-
+          mysim.SetBreakpoint(bp_inst_idx);
         } else {
           Simulator::PrintUsage();
         }
@@ -157,6 +168,8 @@ int main(int argc, char **argv) {
         mysim.PrintPipelines();
         break;
       case 'r':
+        mysim.RunToStop();
+        mysim.PrintPipelines();
         break;
       case 'q':
         is_terminated = true;
