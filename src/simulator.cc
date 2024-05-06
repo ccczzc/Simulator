@@ -99,7 +99,7 @@ bool Simulator::TryForwarding(Instruction& new_inst, Instruction& old_inst, bool
         } else {
           new_inst.in1 = register_[new_inst.rs_or_label_];
         }
-        if (new_inst.rt_or_imm_ == old_inst.rd_) {
+        if ((size_t)new_inst.rt_or_imm_ == old_inst.rd_) {
           if (!enable_forwarding || (old_inst.instruction_op_ == InstructionOp::LOAD && old_inst.ppl_stage != PipelineStage::MEM)) {
             new_inst.in1 = LLONG_MAX;
             return false;
@@ -144,14 +144,14 @@ bool Simulator::SingleCycle() {
     std::cerr << "!!!All the instructions has been executed!!!\n";
     return true;
   }
-  if (pipeline_[4] != -1) {
+  if (pipeline_[4] != (size_t)-1) {
     instructions_[pipeline_[4]].in1 = LLONG_MAX;
     instructions_[pipeline_[4]].in2 = LLONG_MAX;
     instructions_[pipeline_[4]].res = LLONG_MAX;
   }
   // update WB
   pipeline_[4] = pipeline_[3];
-  if (pipeline_[4] != -1) {
+  if (pipeline_[4] != (size_t)-1) {
     auto &WB_Inst = instructions_[pipeline_[4]];
     switch (WB_Inst.instruction_op_) {
       case InstructionOp::LOAD:
@@ -170,7 +170,7 @@ bool Simulator::SingleCycle() {
   }
   // update MEM
   pipeline_[3] = pipeline_[2];
-  if (pipeline_[3] != -1) {
+  if (pipeline_[3] != (size_t)-1) {
     auto &MEM_Inst = instructions_[pipeline_[3]];
     switch (MEM_Inst.instruction_op_) {
       case InstructionOp::LOAD:
@@ -186,7 +186,7 @@ bool Simulator::SingleCycle() {
   }
   // update EX
   pipeline_[2] = pipeline_[1];
-  if (pipeline_[2] != -1) {
+  if (pipeline_[2] != (size_t)-1) {
     auto &EX_Inst = instructions_[pipeline_[2]];
     switch (EX_Inst.instruction_op_) {
       case InstructionOp::LOAD:
@@ -209,16 +209,16 @@ bool Simulator::SingleCycle() {
   // update ID and IF
   size_t old_IF = pipeline_[0];
   bool should_stall = false;
-  if (old_IF != -1) {
+  if (old_IF != (size_t)-1) {
     auto &old_IF_Inst = instructions_[old_IF];
-    if (pipeline_[2] != -1) { // check EX
+    if (pipeline_[2] != (size_t)-1) { // check EX
       auto &EX_Inst = instructions_[pipeline_[2]];
       should_stall = HasHazard(old_IF_Inst, EX_Inst);
       if (should_stall && enable_forwarding_) {
         should_stall = !TryForwarding(old_IF_Inst, EX_Inst);
       }
     }
-    if (!should_stall && pipeline_[3] != -1) { // check MEM
+    if (!should_stall && pipeline_[3] != (size_t)-1) { // check MEM
       auto &MEM_Inst = instructions_[pipeline_[3]];
       should_stall = HasHazard(old_IF_Inst, MEM_Inst);
       if (should_stall && enable_forwarding_) {
@@ -238,7 +238,7 @@ bool Simulator::SingleCycle() {
 
     pipeline_[1] = old_IF;
     size_t curr_ID = pipeline_[1];
-    if (curr_ID != -1) {
+    if (curr_ID != (size_t)-1) {
       auto &ID_Inst = instructions_[curr_ID];
       if (ID_Inst.is_breakpoint_) {
         reached_bp = true;

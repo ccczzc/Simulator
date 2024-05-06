@@ -1,7 +1,6 @@
 		.data
 InitValue:	1
 
-
 		.text
 main:
 		lw		r1,r0,InitValue

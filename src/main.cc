@@ -2,7 +2,8 @@
 
 int main(int argc, char **argv) {
   if (argc < 2) {
-    std::cerr << "You did not provide MIPS file.\n";
+    std::cerr << "You did not provide MIPS file.\n"
+              << "Usage: ./Simulator [your  MIPS assembly code file]\n";
     exit(-1);
   }
   std::ifstream fin(argv[1]);
@@ -86,14 +87,14 @@ int main(int argc, char **argv) {
           unresolved_label[optor2].push_back(inst_num);
         }
         instructions.emplace_back(opname == "beqz" ? InstructionOp::BEQZ
-                                                  : InstructionOp::BNEZ,
+                                                   : InstructionOp::BNEZ,
                                   rd, label_inst_idx, -1);
       }
       inst_num++;
     }
   }
 
-  for (auto& [label, inst_idx] : label_to_inst_idx) {
+  for (auto &[label, inst_idx] : label_to_inst_idx) {
     auto it = unresolved_label.find(label);
     if (it != unresolved_label.end()) {
       for (auto resolved_idx : it->second) {
@@ -117,55 +118,55 @@ int main(int argc, char **argv) {
     char cmd;
     std::cin >> cmd;
     switch (cmd) {
-      case 'v':
-        char cmd_specific;
-        std::cin >> cmd_specific;
-        switch (cmd_specific) {
-          case 'i':
-            mysim.PrintInstructions();
-            break;
-          case 'p':
-            mysim.PrintPipelines();
-            break;
-          case 'r':
-            mysim.PrintRegisters();
-            break;
-          case 'b':
-            mysim.PrintBreakpoints();
-            break;
-          case 'm':
-            mysim.PrintMemory();
-            break;
-          case 's':
-            mysim.PrintStatistics();
-            break;
-          default:
-            Simulator::PrintUsage();
-        }
+    case 'v':
+      char cmd_specific;
+      std::cin >> cmd_specific;
+      switch (cmd_specific) {
+      case 'i':
+        mysim.PrintInstructions();
         break;
-      case 'b':
-        size_t bp_inst_idx;
-        if (std::cin >> bp_inst_idx) {
-          mysim.SetBreakpoint(bp_inst_idx);
-        } else {
-          std::cin.clear();
-          std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-          Simulator::PrintUsage();
-        }
-        break;
-      case 's':
-        mysim.SingleCycle();
+      case 'p':
         mysim.PrintPipelines();
         break;
       case 'r':
-        mysim.RunToStop();
-        mysim.PrintPipelines();
+        mysim.PrintRegisters();
         break;
-      case 'q':
-        is_terminated = true;
+      case 'b':
+        mysim.PrintBreakpoints();
+        break;
+      case 'm':
+        mysim.PrintMemory();
+        break;
+      case 's':
+        mysim.PrintStatistics();
         break;
       default:
         Simulator::PrintUsage();
+      }
+      break;
+    case 'b':
+      size_t bp_inst_idx;
+      if (std::cin >> bp_inst_idx) {
+        mysim.SetBreakpoint(bp_inst_idx);
+      } else {
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        Simulator::PrintUsage();
+      }
+      break;
+    case 's':
+      mysim.SingleCycle();
+      mysim.PrintPipelines();
+      break;
+    case 'r':
+      mysim.RunToStop();
+      mysim.PrintPipelines();
+      break;
+    case 'q':
+      is_terminated = true;
+      break;
+    default:
+      Simulator::PrintUsage();
     }
   }
   return 0;

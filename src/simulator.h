@@ -69,7 +69,6 @@ private:
   std::vector<Register> register_;
   std::vector<Instruction> instructions_;
   std::vector<std::string> instruction_text_;
-  std::set<size_t> breakpoints_;
   std::vector<size_t> pipeline_;
   size_t pc_{0};
   size_t cycle_clocks_{0};
@@ -121,7 +120,7 @@ public:
     case InstructionOp::SUB:
       return !IsBrachInst(old_inst) && !IsStoreInst(old_inst) &&
              ((new_inst.rs_or_label_ == old_inst.rd_) ||
-              (new_inst.rt_or_imm_ == old_inst.rd_));
+              ((size_t)new_inst.rt_or_imm_ == old_inst.rd_));
       break;
     case InstructionOp::STORE:
     case InstructionOp::BEQZ:

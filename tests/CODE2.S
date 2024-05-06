@@ -4,7 +4,6 @@ B:			2
 C:			3
 Result:		0
 
-
 		.text
 main:
 		lw		r1,r0,A

@@ -1,3 +1,6 @@
 all:
-	cmake -B ./build -S . && cd build && make
+	mkdir -p build && cd build && cmake .. && make
+	./build/Simulator ./tests/CODE1.S
 	# ./build/Simulator ./tests/CODE1.S
+	# ./build/Simulator ./tests/CODE2.S
+	

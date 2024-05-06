@@ -1,8 +1,6 @@
 		.data
-
 Count:		2
 Result:		0
-
 
 		.text
 main:
