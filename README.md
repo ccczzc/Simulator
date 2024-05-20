@@ -1,7 +1,7 @@
-## Developing environment
+# Developing environment
 Ubuntu 22.04, clang 14, cmake 3.22, C++ 17
 
-## How to build the simulator
+# How to build the simulator
 - easily, just `make` on the directory **/Simulator**
 - advancedly, `mkdir build`, then `cd build`, `cmake ..`, `make`
 
